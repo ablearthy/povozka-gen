@@ -3,4 +3,4 @@ packages: .
 source-repository-package
   type: git
   location: https://github.com/ablearthy/povozka-parser.git
-  tag: d50e82c55e6e7f73ad5bfcdaf0e3b8809582f137
+  tag: 06e77d9b6d82994be4dcaa1130ba38de1813307b
