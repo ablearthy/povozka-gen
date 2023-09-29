@@ -13,9 +13,6 @@ import GHC.Stack (HasCallStack)
 
 import Data.List (foldl')
 
-type ConstrMap = M.Map TypeName Combinator
-type TypeMap = M.Map TypeName ConstrMap
-
 data Context = Context
   { typesSet :: !(S.Set T.Text)
   , constr2type :: !(M.Map T.Text T.Text)
