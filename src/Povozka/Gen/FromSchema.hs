@@ -69,11 +69,11 @@ extractTypes schema = foldl' go mempty constructors
         m
 
     buildCombinator :: P.Decl meta -> Combinator
-    buildCombinator (P.Decl fc@(P.FullCombinatorId _ _ _ constrId) _ args (P.ResultType rtHead (P.Expr rtTail))) =
+    buildCombinator (P.Decl fc@(P.FullCombinatorId _ _ _ constrId) _ args (P.ResultType rt _)) =
       Combinator
-        { constr = SimpleType $ toTypeName' $ fullCombinatorId2text fc
+        { constr = toTypeName' $ fullCombinatorId2text fc
         , constrId = constrId
-        , typeName = term2intermediateType ctx (P.TExpr (P.Expr (P.TVar rtHead : rtTail)))
+        , typeName = toTypeName $ identifier2text rt
         , fields = map arg_to_field args
         }
 

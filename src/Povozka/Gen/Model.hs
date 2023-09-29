@@ -1,4 +1,12 @@
-module Povozka.Gen.Model where
+module Povozka.Gen.Model
+  ( Combinator (..)
+  , IntermediateType (..)
+  , Field (..)
+  , TypeName
+  , VarName
+  , ConstrMap
+  , TypeMap
+  ) where
 
 import Data.Text qualified as T
 import Data.Word (Word32)
@@ -22,9 +30,9 @@ data Field
   deriving (Show)
 
 data Combinator = Combinator
-  { constr :: !IntermediateType
+  { constr :: !T.Text
   , constrId :: !Word32
-  , typeName :: !IntermediateType
+  , typeName :: !T.Text
   , fields :: ![(VarName, Field)]
   }
   deriving (Show)
