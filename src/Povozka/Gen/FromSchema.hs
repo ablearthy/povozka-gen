@@ -66,7 +66,7 @@ extractTypes schema = undefined
 getRawTypeName :: P.Decl meta -> TypeName
 getRawTypeName (P.Decl _ _ _ (P.ResultType identifier _)) = identifier2text identifier
 
-data Boxity = Boxed | Bare deriving Eq
+data Boxity = Boxed | Bare deriving (Eq)
 
 data IntermediateType
   = SimpleType !TypeName
