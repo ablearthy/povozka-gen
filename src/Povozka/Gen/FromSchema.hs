@@ -30,18 +30,26 @@ isType' :: Context -> P.Identifier meta -> Bool
 isType' ctx r = isType ctx (identifier2text r)
 
 obtainContext :: [P.Decl meta] -> Context
-obtainContext = foldl' go (Context predefinedTypes predefinedConstr2Types predefinedType2Constrs)
+obtainContext = M.foldlWithKey' go emptyContext . M.union predefinedTypes . extracted_types
   where
-    go :: Context -> P.Decl meta -> Context
-    go (Context s m t2c) d@(P.Decl c _ _ _) = Context (S.insert t s) (M.insert ctr t m) t2c'
-      where
-        t = getRawTypeName d
-        ctr = fullCombinatorId2text c
-        t2c' = M.insertWith S.union t (S.singleton ctr) t2c
+    emptyContext = Context mempty mempty mempty
 
-    predefinedTypes = S.fromList ["Int", "Long", "Bytes", "Vector"]
-    predefinedConstr2Types = M.fromList [("int", "Int"), ("long", "Long"), ("bytes", "Bytes"), ("vector", "Vector")]
-    predefinedType2Constrs = M.fromList [("Int", S.singleton "int"), ("Long", S.singleton "long"), ("Bytes", S.singleton "bytes"), ("Vector", S.singleton "vector")]
+    extracted_types :: [P.Decl meta] -> M.Map T.Text T.Text
+    extracted_types =
+      foldl'
+        ( \m d@(P.Decl c _ _ _) ->
+            M.insert (fullCombinatorId2text c) (getRawTypeName d) m
+        )
+        M.empty
+
+    go :: Context -> T.Text -> T.Text -> Context
+    go (Context s m t2c) c t =
+      Context
+        (S.insert t s)
+        (M.insert c t m)
+        (M.insertWith S.union t (S.singleton c) t2c)
+
+    predefinedTypes = M.fromList [("int", "Int"), ("long", "Long"), ("bytes", "Bytes"), ("vector", "Vector"), ("string", "String")]
 
 identifier2text :: P.Identifier meta -> T.Text
 identifier2text (P.Identifier _ (Just ns) name) = fromByteString ns <> "." <> fromByteString name
