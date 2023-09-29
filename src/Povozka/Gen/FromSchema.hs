@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Povozka.Gen.FromSchema (obtainContext, term2intermediateType, pprintIntermediateType) where
+module Povozka.Gen.FromSchema (obtainContext, term2intermediateType, pprintIntermediateType, extractTypes) where
 
 import Povozka.Gen.Model
 import Povozka.Gen.Name
@@ -59,9 +59,34 @@ fullCombinatorId2text :: P.FullCombinatorId meta -> T.Text
 fullCombinatorId2text (P.FullCombinatorId _meta ns name _) = identifier2text (P.Identifier _meta ns name)
 
 extractTypes :: P.Schema meta -> TypeMap
-extractTypes schema = undefined
+extractTypes schema = foldl' go mempty constructors
   where
     constructors = P.constrDecls schema
+
+    go :: TypeMap -> P.Decl meta -> TypeMap
+    go m d@(P.Decl c _ _ _) =
+      M.insertWith
+        M.union
+        (getRawTypeName d)
+        (M.singleton (fullCombinatorId2text c) (buildCombinator d))
+        m
+
+    buildCombinator :: P.Decl meta -> Combinator
+    buildCombinator (P.Decl fc@(P.FullCombinatorId _ _ _ constrId) _ args (P.ResultType rtHead (P.Expr rtTail))) =
+      Combinator
+        { constr = SimpleType $ toTypeName' $ fullCombinatorId2text fc
+        , constrId = constrId
+        , typeName = term2intermediateType ctx (P.TExpr (P.Expr (P.TVar rtHead : rtTail)))
+        , fields = map arg_to_field args
+        }
+
+    arg_to_field :: P.Arg meta -> (VarName, Field)
+    arg_to_field (P.ArrayArg {}) = error "array args are not supported"
+    arg_to_field (P.SimpleArg Nothing _ _ _) = error "anonymous fields are not supported"
+    arg_to_field (P.SimpleArg (Just i) Nothing _ t) = (toVarName (identifier2text i), Field (term2intermediateType ctx t))
+    arg_to_field (P.SimpleArg (Just i) (Just (n, idx)) _ t) = (toVarName (identifier2text i), Conditional (toVarName (identifier2text n)) idx (term2intermediateType ctx t))
+
+    ctx = obtainContext constructors
 
 getRawTypeName :: P.Decl meta -> TypeName
 getRawTypeName (P.Decl _ _ _ (P.ResultType identifier _)) = identifier2text identifier
