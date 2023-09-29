@@ -68,11 +68,6 @@ getRawTypeName (P.Decl _ _ _ (P.ResultType identifier _)) = identifier2text iden
 
 data Boxity = Boxed | Bare deriving (Eq)
 
-data IntermediateType
-  = SimpleType !TypeName
-  | Ap IntermediateType IntermediateType
-  deriving (Show)
-
 pprintIntermediateType :: IntermediateType -> String
 pprintIntermediateType (SimpleType x) = T.unpack x
 pprintIntermediateType (Ap a b) = "(" <> pprintIntermediateType a <> " " <> pprintIntermediateType b <> ")"

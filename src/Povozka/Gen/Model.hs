@@ -6,13 +6,18 @@ import Data.Word (Word32)
 type TypeName = T.Text
 type VarName = T.Text
 
+data IntermediateType
+  = SimpleType !TypeName
+  | Ap IntermediateType IntermediateType
+  deriving (Show)
+
 data Field
-  = Conditional !VarName (Maybe Int) !TypeName
-  | Field !TypeName
+  = Conditional !VarName (Maybe Int) !IntermediateType
+  | Field !IntermediateType
 
 data Combinator = Combinator
-  { constr :: !TypeName
+  { constr :: !IntermediateType
   , constrId :: !Word32
-  , typeName :: !TypeName
+  , typeName :: !IntermediateType
   , fields :: ![(VarName, Field)]
   }
