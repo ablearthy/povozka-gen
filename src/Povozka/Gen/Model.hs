@@ -14,10 +14,11 @@ data IntermediateType
 data Field
   = Conditional !VarName (Maybe Int) !IntermediateType
   | Field !IntermediateType
+  deriving Show
 
 data Combinator = Combinator
   { constr :: !IntermediateType
   , constrId :: !Word32
   , typeName :: !IntermediateType
   , fields :: ![(VarName, Field)]
-  }
+  } deriving Show
