@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Povozka.Gen.TH (generateConstructor, generateType, generateTypeFamily, generateBinaryInstanceForConstructor, generateBinaryInstanceForTypeFamily, generateBinaryInstanceForTypeFamily', pprint, runQ) where
+module Povozka.Gen.TH (generateConstructor, generateType, generateTypeFamily, generateBinaryInstanceForConstructor, generateBinaryInstanceForTypeFamily, generateBinaryInstanceForTypeFamily', generateFunction, pprint, runQ) where
 
 import Language.Haskell.TH
 
@@ -84,8 +84,11 @@ generateBinaryInstanceForConstructor comb = do
       (names, stmts) <- generateGetParams comb.fields
       thePure <- runQ [|pure|]
       let r = foldl' AppE (ConE combName) names
-      let lastStmt = NoBindS $ AppE thePure r
-      pure $ DoE Nothing (reverse (lastStmt : stmts))
+      let lastStmt = AppE thePure r
+      case stmts of
+        [] -> pure lastStmt
+        _ -> pure $ DoE Nothing (reverse (NoBindS lastStmt : stmts))
+       
     bodyPut = do
       varName <- newName "to_be_encoded"
       let getter = referToField varName
@@ -99,7 +102,10 @@ generateBinaryInstanceForConstructor comb = do
                 (VarE (mkName "Data.Binary.put"))
                 (getter fieldName)
 
-      let statements = map (NoBindS . generateSinglePutExpr . fst) comb.fields
+      let statements = case comb.fields of
+            [] -> [NoBindS (AppE (VarE 'pure) (VarE (mkName "()")))]
+            _ -> map (NoBindS . generateSinglePutExpr . fst) comb.fields
+
       pure $ Clause [VarP varName] (NormalB (DoE Nothing statements)) []
       where
         flags = collectFlags comb.fields
@@ -134,18 +140,16 @@ generateGetParams fields = go (mempty, [], []) fields
 generateBinaryInstanceForTypeFamily :: TypeName -> [Combinator] -> Q Dec
 generateBinaryInstanceForTypeFamily typeName' combs = do
   g <- generateGet
-  clauses <- forM combs generatePutClause
+  funcs <- forM combs (fmap (FunD (mkName "put") . pure) . generatePutClause)
   pure
     $ InstanceD
       Nothing
       []
       instanceName
-      [ FunD
+      (FunD
           (mkName "get")
           [ Clause [] (NormalB g) []
-          ]
-      , FunD (mkName "put") clauses
-      ]
+          ] : funcs)
   where
     instanceName = AppT (ConT (mkName "Data.Binary.Binary")) (ConT typeName)
     typeName = text2name typeName'
@@ -182,6 +186,14 @@ generateBinaryInstanceForTypeFamily typeName' combs = do
 generateBinaryInstanceForTypeFamily' :: [Combinator] -> Q Dec
 generateBinaryInstanceForTypeFamily' [] = error "given an empty family"
 generateBinaryInstanceForTypeFamily' (x : xs) = generateBinaryInstanceForTypeFamily x.typeName (x : xs)
+
+generateFunction :: Combinator -> Q [Dec]
+generateFunction comb = do
+  let constr = generateConstructor comb
+  instance_ <- generateBinaryInstanceForConstructor comb
+  let funcInstance = InstanceD Nothing [] (ConT (mkName "TLFunctionʼ") `AppT` ConT (text2name comb.constr) `AppT` ConT (text2name comb.typeName)) []
+  pure [constr, instance_, funcInstance]
+
 
 collectFlags :: [(VarName, Field)] -> M.Map VarName [(VarName, Int)]
 collectFlags = foldl' go mempty
