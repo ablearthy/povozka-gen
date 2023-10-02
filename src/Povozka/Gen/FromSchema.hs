@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Povozka.Gen.FromSchema (obtainContext, term2intermediateType, pprintIntermediateType, extractTypes) where
+module Povozka.Gen.FromSchema (obtainContext, term2intermediateType, pprintIntermediateType, extractTypes, extractFunctions) where
 
 import Povozka.Gen.Model
 import Povozka.Gen.Name
@@ -12,6 +12,7 @@ import Data.Text qualified as T
 import GHC.Stack (HasCallStack)
 
 import Data.List (foldl')
+import Data.Maybe
 
 data Context = Context
   { typesSet :: !(S.Set T.Text)
@@ -55,6 +56,30 @@ identifier2text (P.Identifier _ _ name) = fromByteString name
 fullCombinatorId2text :: P.FullCombinatorId meta -> T.Text
 fullCombinatorId2text (P.FullCombinatorId _meta ns name _) = identifier2text (P.Identifier _meta ns name)
 
+extractFunctions :: P.Schema meta -> [Combinator]
+extractFunctions schema = map (patch . buildCombinator ctx) functions
+  where
+    patch comb = comb {constr = "Method'" `T.append` strip_prime (constr comb)}
+      where
+        strip_prime x = fromMaybe x (T.stripSuffix "'" x)
+    functions = P.funcDecls schema
+    ctx = obtainContext (P.constrDecls schema)
+
+buildCombinator :: Context -> P.Decl meta -> Combinator
+buildCombinator ctx (P.Decl fc@(P.FullCombinatorId _ _ _ constrId) _ args (P.ResultType rt _)) =
+  Combinator
+    { constr = toTypeName' $ fullCombinatorId2text fc
+    , constrId = constrId
+    , typeName = toTypeName $ identifier2text rt
+    , fields = map arg_to_field args
+    }
+  where
+    arg_to_field :: P.Arg meta -> (VarName, Field)
+    arg_to_field (P.ArrayArg {}) = error "array args are not supported"
+    arg_to_field (P.SimpleArg Nothing _ _ _) = error "anonymous fields are not supported"
+    arg_to_field (P.SimpleArg (Just i) Nothing _ t) = (toVarName (identifier2text i), Field (term2intermediateType ctx t))
+    arg_to_field (P.SimpleArg (Just i) (Just (n, idx)) _ t) = (toVarName (identifier2text i), Conditional (toVarName (identifier2text n)) idx (term2intermediateType ctx t))
+
 extractTypes :: P.Schema meta -> TypeMap
 extractTypes schema = foldl' go mempty constructors
   where
@@ -65,23 +90,8 @@ extractTypes schema = foldl' go mempty constructors
       M.insertWith
         M.union
         (getRawTypeName d)
-        (M.singleton (fullCombinatorId2text c) (buildCombinator d))
+        (M.singleton (fullCombinatorId2text c) (buildCombinator ctx d))
         m
-
-    buildCombinator :: P.Decl meta -> Combinator
-    buildCombinator (P.Decl fc@(P.FullCombinatorId _ _ _ constrId) _ args (P.ResultType rt _)) =
-      Combinator
-        { constr = toTypeName' $ fullCombinatorId2text fc
-        , constrId = constrId
-        , typeName = toTypeName $ identifier2text rt
-        , fields = map arg_to_field args
-        }
-
-    arg_to_field :: P.Arg meta -> (VarName, Field)
-    arg_to_field (P.ArrayArg {}) = error "array args are not supported"
-    arg_to_field (P.SimpleArg Nothing _ _ _) = error "anonymous fields are not supported"
-    arg_to_field (P.SimpleArg (Just i) Nothing _ t) = (toVarName (identifier2text i), Field (term2intermediateType ctx t))
-    arg_to_field (P.SimpleArg (Just i) (Just (n, idx)) _ t) = (toVarName (identifier2text i), Conditional (toVarName (identifier2text n)) idx (term2intermediateType ctx t))
 
     ctx = obtainContext constructors
 
