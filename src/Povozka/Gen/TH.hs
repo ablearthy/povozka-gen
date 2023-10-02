@@ -33,12 +33,16 @@ generateConstructor comb =
   where
     constrName = text2name comb.constr
 
-    fields = map (\(fname, ftype) -> (text2name fname, defaultBang, (tr_ ftype))) comb.fields
+    fields = map (\(fname, ftype) -> (text2name fname, defaultBang, ftype)) $ foldr go [] comb.fields
       where
-        tr_ (Field x) = intermediateTypeToType x
-        tr_ (Conditional _ _ x) = AppT (ConT $ mkName "Maybe") $ intermediateTypeToType x
+        go (r, Field x) acc
+          | r `M.member` flags = acc
+          | otherwise = (r, intermediateTypeToType x) : acc
+        go (r, Conditional _ _ x) acc = (r, AppT (ConT $ mkName "Maybe") $ intermediateTypeToType x) : acc
 
     defaultBang = Bang NoSourceUnpackedness SourceStrict
+
+    flags = collectFlags comb.fields
 
 generateType :: TypeName -> [Combinator] -> Dec
 generateType t combs = DataD [] constrName [] Nothing constructors []
@@ -104,19 +108,23 @@ generateBinaryInstanceForConstructor comb = do
         referToField varName fieldName = GetFieldE (VarE varName) (T.unpack fieldName)
 
 generateGetParams :: [(T.Text, Field)] -> Q ([Exp], [Stmt])
-generateGetParams = go (mempty, [], [])
+generateGetParams fields = go (mempty, [], []) fields
   where
+    flags = collectFlags fields
     go :: (M.Map T.Text Name, [Exp], [Stmt]) -> [(T.Text, Field)] -> Q ([Exp], [Stmt])
     go (_, a, b) [] = pure (reverse a, b)
     go (s, names, stmts) ((name, Field _) : rest) = do
       nn <- newName (T.unpack name)
-      let newStmt = BindS (VarP nn) (VarE (mkName "Data.Binary.get"))
-      go (M.insert name nn s, VarE nn : names, newStmt : stmts) rest
+      let getter = if name `M.member` flags then "Data.Binary.Get.getWord32le" else "Data.Binary.get"
+      let newStmt = BindS (VarP nn) (VarE (mkName getter))
+      let newNames = (if name `M.member` flags then names else VarE nn : names)
+      go (M.insert name nn s, newNames, newStmt : stmts) rest
     go (s, names, stmts) ((name, Conditional v midx _) : rest) = do
       nn <- newName (T.unpack name)
       l <- tr_ midx
       let newStmt = BindS (VarP nn) (AppE (AppE (VarE (mkName "Data.Binary.tlHandleOpt")) (VarE (s M.! v))) l)
-      go (M.insert name nn s, VarE nn : names, newStmt : stmts) rest
+      let newNames = (if name `M.member` flags then names else VarE nn : names)
+      go (M.insert name nn s, newNames, newStmt : stmts) rest
       where
         tr_ Nothing = [|Nothing|]
         tr_ (Just x) = do
