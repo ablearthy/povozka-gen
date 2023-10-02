@@ -65,8 +65,8 @@ generateBinaryInstanceForConstructor :: Combinator -> Q Dec
 generateBinaryInstanceForConstructor comb = do
   g <- bodyGet
   p <- bodyPut
-  pure
-    $ InstanceD
+  pure $
+    InstanceD
       Nothing
       []
       instanceName
@@ -88,7 +88,7 @@ generateBinaryInstanceForConstructor comb = do
       case stmts of
         [] -> pure lastStmt
         _ -> pure $ DoE Nothing (reverse (NoBindS lastStmt : stmts))
-       
+
     bodyPut = do
       varName <- newName "to_be_encoded"
       let getter = referToField varName
@@ -141,15 +141,17 @@ generateBinaryInstanceForTypeFamily :: TypeName -> [Combinator] -> Q Dec
 generateBinaryInstanceForTypeFamily typeName' combs = do
   g <- generateGet
   funcs <- forM combs (fmap (FunD (mkName "put") . pure) . generatePutClause)
-  pure
-    $ InstanceD
+  pure $
+    InstanceD
       Nothing
       []
       instanceName
-      (FunD
+      ( FunD
           (mkName "get")
           [ Clause [] (NormalB g) []
-          ] : funcs)
+          ]
+          : funcs
+      )
   where
     instanceName = AppT (ConT (mkName "Data.Binary.Binary")) (ConT typeName)
     typeName = text2name typeName'
@@ -177,8 +179,8 @@ generateBinaryInstanceForTypeFamily typeName' combs = do
       varName <- newName "tmp"
       let bodyStmt1 = AppE (VarE (mkName "Data.Binary.Put.putWord32le")) (LitE (IntegerL (fromIntegral comb.constrId)))
       let bodyStmt2 = AppE (VarE (mkName "Data.Binary.put")) (VarE varName)
-      pure
-        $ Clause
+      pure $
+        Clause
           [ConP (text2name (strip_prime comb.constr)) mempty [VarP varName]]
           (NormalB (DoE Nothing [NoBindS bodyStmt1, NoBindS bodyStmt2]))
           mempty
@@ -193,7 +195,6 @@ generateFunction comb = do
   instance_ <- generateBinaryInstanceForConstructor comb
   let funcInstance = InstanceD Nothing [] (ConT (mkName "TLFunctionʼ") `AppT` ConT (text2name comb.constr) `AppT` ConT (text2name comb.typeName)) []
   pure [constr, instance_, funcInstance]
-
 
 collectFlags :: [(VarName, Field)] -> M.Map VarName [(VarName, Int)]
 collectFlags = foldl' go mempty
