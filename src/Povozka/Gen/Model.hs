@@ -33,6 +33,7 @@ data Combinator = Combinator
   { constr :: !T.Text
   , constrId :: !Word32
   , typeName :: !T.Text
+  , typeNameFull :: !IntermediateType
   , fields :: ![(VarName, Field)]
   }
   deriving (Show)

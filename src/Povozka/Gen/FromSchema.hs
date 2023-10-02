@@ -66,11 +66,12 @@ extractFunctions schema = map (patch . buildCombinator ctx) functions
     ctx = obtainContext (P.constrDecls schema)
 
 buildCombinator :: Context -> P.Decl meta -> Combinator
-buildCombinator ctx (P.Decl fc@(P.FullCombinatorId _ _ _ constrId) _ args (P.ResultType rt _)) =
+buildCombinator ctx (P.Decl fc@(P.FullCombinatorId _ _ _ constrId) _ args (P.ResultType rt (P.Expr rt_exprs))) =
   Combinator
     { constr = toTypeName' $ fullCombinatorId2text fc
     , constrId = constrId
     , typeName = toTypeName $ identifier2text rt
+    , typeNameFull = term2intermediateType ctx (P.TExpr (P.Expr (P.TVar rt : rt_exprs)))
     , fields = map arg_to_field args
     }
   where

@@ -193,7 +193,7 @@ generateFunction :: Combinator -> Q [Dec]
 generateFunction comb = do
   let constr = generateConstructor comb
   instance_ <- generateBinaryInstanceForConstructor comb
-  let funcInstance = InstanceD Nothing [] (ConT (mkName "TLFunctionʼ") `AppT` ConT (text2name comb.constr) `AppT` ConT (text2name comb.typeName)) []
+  let funcInstance = InstanceD Nothing [] (ConT (mkName "TLFunctionʼ") `AppT` ConT (text2name comb.constr) `AppT` intermediateTypeToType comb.typeNameFull) []
   pure [constr, instance_, funcInstance]
 
 collectFlags :: [(VarName, Field)] -> M.Map VarName [(VarName, Int)]
