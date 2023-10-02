@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Povozka.Gen.TH (generateConstructor, generateType, generateTypeFamily, generateBinaryInstanceForConstructor, pprint, runQ) where
+module Povozka.Gen.TH (generateConstructor, generateType, generateTypeFamily, generateBinaryInstanceForConstructor, generateBinaryInstanceForTypeFamily,generateBinaryInstanceForTypeFamily', pprint, runQ) where
 
 import Language.Haskell.TH
 
@@ -121,6 +121,48 @@ generateGetParams = go (mempty, [], [])
         tr_ (Just x) = do
           let r = pure $ LitE $ IntegerL (fromIntegral x)
           [|Just $r|]
+
+generateBinaryInstanceForTypeFamily :: TypeName -> [Combinator] -> Q Dec
+generateBinaryInstanceForTypeFamily typeName' combs = do
+  g <- generateGet
+  -- p <- undefined
+  pure
+    $ InstanceD
+      Nothing
+      []
+      instanceName
+      [ FunD
+          (mkName "get")
+          [ Clause [] (NormalB g) []
+          ]
+      , FunD (mkName "put") []
+      ]
+  where
+    instanceName = AppT (ConT (mkName "Data.Binary.Binary")) (ConT typeName)
+    typeName = text2name typeName'
+
+    strip_prime x = fromMaybe x (T.stripSuffix "'" x)
+
+    generateGet = do
+      tmpVar <- newName "tmp"
+      let fstStmt = BindS (VarP tmpVar) (VarE (mkName "Data.Binary.Get.getWord32le"))
+
+      let genMatch comb =
+            Match
+              (LitP (IntegerL (fromIntegral comb.constrId)))
+              ( NormalB
+                  ( VarE (mkName "fmap")
+                      `AppE` VarE (text2name (strip_prime comb.constr))
+                      `AppE` VarE (mkName "Data.Binary.get")
+                  )
+              )
+              []
+      let sndStmt = NoBindS $ CaseE (VarE tmpVar) (map genMatch combs)
+      pure $ DoE Nothing [fstStmt, sndStmt]
+
+generateBinaryInstanceForTypeFamily' :: [Combinator] -> Q Dec
+generateBinaryInstanceForTypeFamily' [] = error "given an empty family"
+generateBinaryInstanceForTypeFamily' (x:xs) = generateBinaryInstanceForTypeFamily x.typeName (x:xs)
 
 collectFlags :: [(VarName, Field)] -> M.Map VarName [(VarName, Int)]
 collectFlags = foldl' go mempty
