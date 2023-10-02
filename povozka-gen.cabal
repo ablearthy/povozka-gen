@@ -20,20 +20,23 @@ common warnings
 
 library
   import:           warnings
-  exposed-modules:  Povozka.Gen.FromSchema
-  other-modules:
+  exposed-modules:
+    Povozka.Gen.FromSchema
     Povozka.Gen.Model
-    Povozka.Gen.Name
+    Povozka.Gen.TH
+
+  other-modules:    Povozka.Gen.Name
 
   -- other-extensions:
   build-depends:
     , base              ^>=4.17.1.0
     , binary
     , bytestring
+    , containers
     , povozka-parser
     , template-haskell
     , text
-    , containers
+    , vector
 
   hs-source-dirs:   src
   default-language: GHC2021
@@ -45,12 +48,13 @@ executable povozka-gen
   --   other-modules:
   -- other-extensions:
   build-depends:
-    , base         ^>=4.17.1.0
+    , base            ^>=4.17.1.0
     , binary
-    , povozka-gen
-    , povozka-parser
     , bytestring
     , containers
+    , povozka-gen
+    , povozka-parser
+    , text
 
   hs-source-dirs:   app
   default-language: GHC2021
