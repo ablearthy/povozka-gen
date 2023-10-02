@@ -9,9 +9,9 @@ import Language.Haskell.TH
 import Data.Text qualified as T
 import Povozka.Gen.Model
 
-import Data.Maybe (fromMaybe)
 import Data.List (foldl')
 import Data.Map.Strict qualified as M
+import Data.Maybe (fromMaybe)
 
 text2name :: T.Text -> Name
 text2name = mkName . T.unpack
@@ -59,34 +59,72 @@ generateTypeFamily combs@(c : _) = a : b
 generateBinaryInstanceForConstructor :: Combinator -> Q Dec
 generateBinaryInstanceForConstructor comb = do
   g <- bodyGet
-  pure $ InstanceD Nothing [] instanceName [FunD (mkName "get") [Clause [] (NormalB g) []]]
+  p <- bodyPut
+  pure
+    $ InstanceD
+      Nothing
+      []
+      instanceName
+      [ FunD
+          (mkName "get")
+          [ Clause [] (NormalB g) []
+          ]
+      , FunD (mkName "put") [p]
+      ]
   where
     instanceName = AppT (ConT (mkName "Data.Binary.Binary")) (ConT combName)
     combName = text2name comb.constr
 
     bodyGet = do
-        (names, stmts) <- generateGetParams comb.fields
-        thePure <- runQ [|pure|]
-        let r = foldl' AppE (ConE combName) names
-        let lastStmt = NoBindS $ AppE thePure r
-        pure $ DoE Nothing (reverse (lastStmt:stmts))
+      (names, stmts) <- generateGetParams comb.fields
+      thePure <- runQ [|pure|]
+      let r = foldl' AppE (ConE combName) names
+      let lastStmt = NoBindS $ AppE thePure r
+      pure $ DoE Nothing (reverse (lastStmt : stmts))
+    bodyPut = do
+      varName <- newName "to_be_encoded"
+      let getter = referToField varName
+      let generateSinglePutExpr fieldName = case fieldName `M.lookup` flags of
+            Just children ->
+              AppE
+                (VarE (mkName "Data.Binary.encodeFlag"))
+                (ListE (map (\(n, idx) -> TupE [Just (AppE (VarE (mkName "Data.Maybe.isJust")) (getter n)), Just (LitE (IntegerL (fromIntegral idx)))]) children))
+            Nothing ->
+              AppE
+                (VarE (mkName "Data.Binary.put"))
+                (getter fieldName)
+
+      let statements = map (NoBindS . generateSinglePutExpr . fst) comb.fields
+      pure $ Clause [VarP varName] (NormalB (DoE Nothing statements)) []
+      where
+        flags = collectFlags comb.fields
+
+        referToField :: Name -> VarName -> Exp
+        referToField varName fieldName = GetFieldE (VarE varName) (T.unpack fieldName)
 
 generateGetParams :: [(T.Text, Field)] -> Q ([Exp], [Stmt])
 generateGetParams = go (mempty, [], [])
   where
     go :: (M.Map T.Text Name, [Exp], [Stmt]) -> [(T.Text, Field)] -> Q ([Exp], [Stmt])
     go (_, a, b) [] = pure (reverse a, b)
-    go (s, names, stmts) ((name, Field _):rest) = do
-        nn <- newName (T.unpack name)
-        let newStmt = BindS (VarP nn) (VarE (mkName "Data.Binary.get"))
-        go (M.insert name nn s, VarE nn:names, newStmt:stmts) rest
-    go (s, names, stmts) ((name, Conditional v midx _):rest) = do
-        nn <- newName (T.unpack name)
-        l <- tr_ midx
-        let newStmt = BindS (VarP nn) (AppE (AppE (VarE (mkName "Data.Binary.tlHandleOpt")) (VarE (s M.! v))) l)
-        go (M.insert name nn s, VarE nn:names, newStmt:stmts) rest
+    go (s, names, stmts) ((name, Field _) : rest) = do
+      nn <- newName (T.unpack name)
+      let newStmt = BindS (VarP nn) (VarE (mkName "Data.Binary.get"))
+      go (M.insert name nn s, VarE nn : names, newStmt : stmts) rest
+    go (s, names, stmts) ((name, Conditional v midx _) : rest) = do
+      nn <- newName (T.unpack name)
+      l <- tr_ midx
+      let newStmt = BindS (VarP nn) (AppE (AppE (VarE (mkName "Data.Binary.tlHandleOpt")) (VarE (s M.! v))) l)
+      go (M.insert name nn s, VarE nn : names, newStmt : stmts) rest
       where
-        tr_ Nothing = [| Nothing |]
+        tr_ Nothing = [|Nothing|]
         tr_ (Just x) = do
-            let r = pure $ LitE $ IntegerL (fromIntegral x)
-            [| Just $r |]
+          let r = pure $ LitE $ IntegerL (fromIntegral x)
+          [|Just $r|]
+
+collectFlags :: [(VarName, Field)] -> M.Map VarName [(VarName, Int)]
+collectFlags = foldl' go mempty
+  where
+    go :: M.Map VarName [(VarName, Int)] -> (VarName, Field) -> M.Map VarName [(VarName, Int)]
+    go acc (fieldName, Conditional target (Just idx) _) = M.insertWith (++) target [(fieldName, idx)] acc
+    go acc _ = acc
