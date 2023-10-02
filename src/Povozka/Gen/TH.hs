@@ -2,13 +2,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Povozka.Gen.TH (generateConstructor, generateType, generateTypeFamily, generateBinaryInstanceForConstructor, generateBinaryInstanceForTypeFamily,generateBinaryInstanceForTypeFamily', pprint, runQ) where
+module Povozka.Gen.TH (generateConstructor, generateType, generateTypeFamily, generateBinaryInstanceForConstructor, generateBinaryInstanceForTypeFamily, generateBinaryInstanceForTypeFamily', pprint, runQ) where
 
 import Language.Haskell.TH
 
 import Data.Text qualified as T
 import Povozka.Gen.Model
 
+import Control.Monad (forM)
 import Data.List (foldl')
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe)
@@ -125,7 +126,7 @@ generateGetParams = go (mempty, [], [])
 generateBinaryInstanceForTypeFamily :: TypeName -> [Combinator] -> Q Dec
 generateBinaryInstanceForTypeFamily typeName' combs = do
   g <- generateGet
-  -- p <- undefined
+  clauses <- forM combs generatePutClause
   pure
     $ InstanceD
       Nothing
@@ -135,7 +136,7 @@ generateBinaryInstanceForTypeFamily typeName' combs = do
           (mkName "get")
           [ Clause [] (NormalB g) []
           ]
-      , FunD (mkName "put") []
+      , FunD (mkName "put") clauses
       ]
   where
     instanceName = AppT (ConT (mkName "Data.Binary.Binary")) (ConT typeName)
@@ -160,9 +161,19 @@ generateBinaryInstanceForTypeFamily typeName' combs = do
       let sndStmt = NoBindS $ CaseE (VarE tmpVar) (map genMatch combs)
       pure $ DoE Nothing [fstStmt, sndStmt]
 
+    generatePutClause comb = do
+      varName <- newName "tmp"
+      let bodyStmt1 = AppE (VarE (mkName "Data.Binary.Put.putWord32le")) (LitE (IntegerL (fromIntegral comb.constrId)))
+      let bodyStmt2 = AppE (VarE (mkName "Data.Binary.put")) (VarE varName)
+      pure
+        $ Clause
+          [ConP (text2name (strip_prime comb.constr)) mempty [VarP varName]]
+          (NormalB (DoE Nothing [NoBindS bodyStmt1, NoBindS bodyStmt2]))
+          mempty
+
 generateBinaryInstanceForTypeFamily' :: [Combinator] -> Q Dec
 generateBinaryInstanceForTypeFamily' [] = error "given an empty family"
-generateBinaryInstanceForTypeFamily' (x:xs) = generateBinaryInstanceForTypeFamily x.typeName (x:xs)
+generateBinaryInstanceForTypeFamily' (x : xs) = generateBinaryInstanceForTypeFamily x.typeName (x : xs)
 
 collectFlags :: [(VarName, Field)] -> M.Map VarName [(VarName, Int)]
 collectFlags = foldl' go mempty
