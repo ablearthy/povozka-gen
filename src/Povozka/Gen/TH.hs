@@ -61,8 +61,8 @@ generateTypeFamily combs@(c : _) = a : b
     a = generateType c.typeName combs
     b = map generateConstructor combs
 
-generateBinaryInstanceForConstructor :: Combinator -> Q Dec
-generateBinaryInstanceForConstructor comb = do
+generateBinaryInstanceForConstructor :: Bool -> Combinator -> Q Dec
+generateBinaryInstanceForConstructor includeId comb = do
   g <- bodyGet
   p <- bodyPut
   pure $
@@ -80,7 +80,7 @@ generateBinaryInstanceForConstructor comb = do
     instanceName = AppT (ConT (mkName "Data.Binary.Binary")) (ConT combName)
     combName = text2name comb.constr
 
-    bodyGet = do
+    bodyGet' = do
       (names, stmts) <- generateGetParams comb.fields
       thePure <- runQ [|pure|]
       let r = foldl' AppE (ConE combName) names
@@ -88,9 +88,26 @@ generateBinaryInstanceForConstructor comb = do
       case stmts of
         [] -> pure lastStmt
         _ -> pure $ DoE Nothing (reverse (NoBindS lastStmt : stmts))
+    
+    bodyGetIfIncludeId = do
+      tmpVar <- newName "tmp"
+      b <- bodyGet'
+
+      let fstStmt = BindS (VarP tmpVar) (VarE (mkName "Data.Binary.Get.getWord32le"))
+    
+      let genMatch =
+            Match
+              (LitP (IntegerL (fromIntegral comb.constrId)))
+              ( NormalB b )
+              []
+      let sndStmt = NoBindS $ CaseE (VarE tmpVar) [genMatch]
+      pure $ DoE Nothing [fstStmt, sndStmt]
+    
+    bodyGet = if includeId then bodyGetIfIncludeId else bodyGet'
 
     bodyPut = do
       varName <- newName "to_be_encoded"
+      let putIdStmt = NoBindS $ AppE (VarE (mkName "Data.Binary.Put.putWord32le")) (LitE (IntegerL (fromIntegral comb.constrId)))
       let getter = referToField varName
       let generateSinglePutExpr fieldName = case fieldName `M.lookup` flags of
             Just children ->
@@ -102,9 +119,11 @@ generateBinaryInstanceForConstructor comb = do
                 (VarE (mkName "Data.Binary.put"))
                 (getter fieldName)
 
-      let statements = case comb.fields of
+      let basicStatements = case comb.fields of
             [] -> [NoBindS (AppE (VarE 'pure) (VarE (mkName "()")))]
             _ -> map (NoBindS . generateSinglePutExpr . fst) comb.fields
+
+      let statements = if includeId then putIdStmt:basicStatements else basicStatements
 
       pure $ Clause [VarP varName] (NormalB (DoE Nothing statements)) []
       where
@@ -192,7 +211,7 @@ generateBinaryInstanceForTypeFamily' (x : xs) = generateBinaryInstanceForTypeFam
 generateFunction :: Combinator -> Q [Dec]
 generateFunction comb = do
   let constr = generateConstructor comb
-  instance_ <- generateBinaryInstanceForConstructor comb
+  instance_ <- generateBinaryInstanceForConstructor True comb
   let funcInstance = InstanceD Nothing [] (ConT (mkName "TLFunctionʼ") `AppT` ConT (text2name comb.constr) `AppT` intermediateTypeToType comb.typeNameFull) []
   pure [constr, instance_, funcInstance]
 

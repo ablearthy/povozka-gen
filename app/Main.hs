@@ -20,7 +20,7 @@ main = do
       let f = extractFunctions schema
       forM_ (M.toList m) $ \(t, constrs) -> do
         forM_ (M.toList constrs) $ \(rawConstrName, comb) -> do
-          ex <- runQ (generateBinaryInstanceForConstructor comb)
+          ex <- runQ (generateBinaryInstanceForConstructor False comb)
           putStrLn $ pprint ex
         let expr = generateTypeFamily (M.elems constrs)
         ex <- runQ (generateBinaryInstanceForTypeFamily' (M.elems constrs))
